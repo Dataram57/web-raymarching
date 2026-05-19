@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Document</title>
+    </head>
+    <body>
+        <script id="draw-shader-fs" type="x-shader/x-fragment">
+            precision mediump float;
+            #define PI 3.1415926538
+            uniform vec2 iResolution;
+            uniform vec2 iMouse;
+            uniform float iTime;
+            uniform vec3 iCamPos;
+            uniform vec3 iCamRot;
+            
+            const int kRaySteps = 100;
+            const vec3 kAmbient = vec3(0.2, 0.2, 0.2);
+
+
+// ---------------- NOISE ----------------
+float hash(vec3 p)
+{
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float noise(vec3 x)
+{
+    vec3 i = floor(x);
+    vec3 f = fract(x);
+
+    f = f * f * (3.0 - 2.0 * f);
+
+    return mix(
+        mix(
+            mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+            mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x),
+            f.y),
+        mix(
+            mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+            mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x),
+            f.y),
+        f.z);
+}
+
+float fbm(vec3 p)
+{
+    float v = 0.0;
+    float a = 0.5;
+
+    for (int i = 0; i < 5; i++)
+    {
+        v += a * noise(p);
+        p *= 2.0;
+        a *= 0.5;
+    }
+    return v;
+}
+
+            float opU( float d1, float d2 )
+            {
+                return (d1<d2) ? d1 : d2;
+            }
+
+            float sdTriPrism( vec3 p, vec2 h )
+            {
+                vec3 q = abs(p);
+                return max(q.z-h.y,max(q.x*0.866025+p.y*0.5,-p.y)-h.x*0.5);
+            }
+
+            float sdSphere( vec3 p, float s )
+            {
+                return length(p)-s;
+            }
+
+            float sdBox( vec3 p, vec3 b )
+            {
+            vec3 d = abs(p) - b;
+            return min(max(d.x,max(d.y,d.z)),0.0) + length(max(d,0.0));
+            }
+
+            float sdPlane(vec3 p)
+            {
+                return p.y;
+            }
+
+            float opTwist( vec3 p )
+            {
+                float c = cos(5.*p.y);
+                float s = sin(5.*p.y);
+                mat2  m = mat2(c,-s,s,c);
+                vec3  q = vec3(m*p.xz,p.y);
+                return sdBox(q, vec3(.25));
+            }
+
+float sdBoxFrame(vec3 p, vec3 b)
+{
+    vec3 d = abs(p) - b;
+    return length(max(d, 0.0)) + min(max(d.x, max(d.y, d.z)), 0.0);
+}
+
+float fogBox(vec3 p, vec3 b)
+{
+    vec3 q = abs(p) - b;
+    float outsideDist = length(max(q, 0.0));
+    float inside = min(max(q.x, max(q.y, q.z)), 0.0);
+
+    // inside = negative -> inside box
+    return -inside; // positive inside, 0 outside-ish
+}
+
+float fogDensity(vec3 p)
+{
+    // SMALL CLOUD BOX (centered near origin or offset)
+    vec3 b = vec3(2.5, 1.5, 2.5);
+
+    vec3 q = abs(p) - b;
+
+    // hard-ish interior mask (important for “cloud chunk” feel)
+    float inside = smoothstep(0.2, 0.0, length(max(q, 0.0)));
+
+    // internal structure (cloud fluff)
+    float n = fbm(p * 1.2 + vec3(0.0, iTime * 0.1, 0.0));
+
+    // sharp cloud thresholding (key difference vs fog)
+    float cloud = smoothstep(0.45, 0.75, n);
+
+    return inside * cloud;
+}
+
+
+            // Distance to closest scene hit
+            float map(vec3 pos)
+            {
+                float dist;
+                //dist = sdPlane(pos + vec3(0,32,0));
+                //dist = opU(dist, sdSphere(pos + vec3(3, -1, 3), 0.25));
+                dist = sdSphere(pos + vec3(0,-2,0), abs(sin(iTime)));
+                dist = opU(dist, sdBox(pos + vec3(5,0,5),vec3(0.5,2,0.5)));
+                dist = opU(dist, sdBox(pos + vec3(5,0,-5),vec3(0.5,2,0.5)));
+                dist = opU(dist, sdBox(pos + vec3(-5,0,-5),vec3(0.5,2,0.5)));
+                dist = opU(dist, sdBox(pos + vec3(-5,0,5),vec3(0.5,2,0.5)));
+                dist = opU(dist, sdBox(pos + vec3(0,2.5,0),vec3(5.5,0.5,5.5)));
+                //dist = opU(dist, sdTriPrism(pos + vec3(-3, -3, -3), vec2(0.25)));
+                //sphere
+                //dist = opU(dist, sdTriPrism(pos + vec3(3, 3, 3), vec2(0.25)));
+                //dist = opU(dist, sdTriPrism(pos + vec3(-3, -3, -3), vec2(0.25)));
+                return dist;
+            }
+
+            vec3 getNormal(vec3 pos)
+            {
+                float epsilon = 0.001;
+                vec2 t = vec2(0.0, epsilon);
+            return normalize(vec3(map(pos + t.yxx) - map(pos - t.yxx),
+                        map(pos + t.xyx) - map(pos - t.xyx),
+                        map(pos + t.xxy) - map(pos - t.xxy)));
+            }
+
+            float softshadow( in vec3 ro, in vec3 rd, in float mint, in float tmax )
+            {
+                float res = 1.0;
+                float t = mint;
+                for( int i=0; i<kRaySteps; i++ )
+                {
+                    float h = map(ro + rd*t);
+                    {
+                    if( h<0.001 )
+                        return 0.0;
+                    res = min( res, 48.*h/t );
+                    }
+                    t += h;
+                    if(t>tmax ) break;
+                }
+                return clamp( res, 0.0, 1.0 );
+
+            }
+
+            // Uses map function (smallest distance to scene) for
+            // approximating normal at pos
+            vec3 lighting(vec3 pos, vec3 lightDir)
+            {
+                vec3 n =getNormal(pos);
+                return vec3(1.0) * max(0.,dot(n, lightDir)) * softshadow(pos, lightDir,0.02, 50.) + kAmbient;
+            }
+
+            float repeat(float t, float min, float max) 
+            {
+                float diff = max - min;
+                float d = t / diff;
+                return fract(d) * diff + min;
+            }
+
+            vec3 getColor(vec3 rayPos, vec3 rayDir)
+{
+    vec3 col = vec3(0.6, 0.8, 1.0); // sky background
+
+    float t = 0.0;
+    float maxT = 30.0;
+
+    vec3 lightDir = normalize(vec3(0.4, 1.0, 0.2));
+
+    for (int i = 0; i < kRaySteps; i++)
+    {
+        vec3 pos = rayPos + rayDir * t;
+
+        float d = map(pos);
+
+        // -----------------------------
+        // CLOUD VOLUME (key change)
+        // -----------------------------
+        float dens = fogDensity(pos);
+
+        if (dens > 0.01)
+        {
+            // lighting inside cloud (forward scattering boost)
+            float ndl = max(dot(lightDir, rayDir), 0.0);
+
+            // brighten clouds instead of darken
+            vec3 cloudCol = vec3(1.0) * (0.3 + 0.7 * ndl);
+
+            // strong density response (clouds are opaque-ish)
+            float alpha = dens * 0.25;
+
+            col = mix(col, cloudCol, alpha);
+        }
+
+        // advance ray
+        t += max(d * 0.5, 0.03);
+
+        if (t > maxT) break;
+
+        // surface hit
+        if (d < 0.001)
+        {
+            vec3 surf = lighting(pos, lightDir);
+            col = mix(col, surf, 1.0);
+            break;
+        }
+    }
+
+    return col;
+}
+
+            vec3 FPSCord(float pitch, float yaw){
+                return vec3(cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw));
+            }
+
+            void mainImage( out vec4 fragColor, in vec2 fragCoord )
+            {
+                vec2 uv = fragCoord.xy / iResolution.xy;
+                float aspect = iResolution.x / iResolution.y;
+                
+                // Make uv go [-0.5, 0.5] and scale uv.x according to aspect ratio
+                uv -= .5;
+                uv.x = aspect * uv.x;
+                // Initialize camera stuff
+                vec3 camPos = iCamPos;
+                //rotate camera
+                //flat tank = vec3(cos(iCamRot.x), 0, sin(iCamRot.x));
+                //Cam type: FPS
+                //vec3(cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw))
+                //vec3(-sin(pitch) * cos(yaw), cos(pitch), -sin(pitch) * sin(yaw))
+                vec3 camDir = FPSCord(iCamRot.y, iCamRot.x);
+                vec3 camUp = FPSCord(iCamRot.y + PI * 0.5, iCamRot.x);
+                //rest
+                vec3 camRight = normalize(cross(camUp, camDir));
+                camUp = normalize(cross(camDir, camRight));
+                
+                vec3 rayPos = camPos;
+                vec3 rayDir = normalize(camDir + uv.x * camRight + uv.y * camUp);
+                
+                // Raymarch scene to get pixel color
+                vec3 color = getColor(rayPos, rayDir);
+                
+                // Set pixel color
+                fragColor = vec4(color, 1.0);
+            }
+            
+            void main() 
+            {
+                mainImage( gl_FragColor, gl_FragCoord.xy );
+            }
+        </script>
+        
+        <script id="draw-shader-vs" type="x-shader/x-vertex">
+            attribute vec2 inPos;
+            
+            void main() 
+            {
+                gl_Position = vec4(inPos, 0.0, 1);
+            }
+        </script>
+        <canvas id="ogl-canvas" style="border: none"></canvas>
+        <script src="script.js"></script>
+    </body>
+</html>
