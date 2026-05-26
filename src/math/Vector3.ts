@@ -186,12 +186,31 @@ export class Vector3 {
         return new Vector3(Math.round(this.x), Math.round(this.y), Math.round(this.z))
     }
 
+    mod(p : number): Vector3{
+        return new Vector3(this.x % p, this.y % p, this.z % p);
+    }
+
+    modSelf(p : number): Vector3{
+        this.x %= p;
+        this.y %= p;
+        this.z %= p;
+        return this;
+    }
+
     // ─── Angle ────────────────────────────────────────────────────────────────
 
     /** Angle in radians between this and v */
     angleTo(v: Vector3): number {
         const d = this.normalize().dot(v.normalize())
         return Math.acos(Math.max(-1, Math.min(1, d)))
+    }
+
+    normalizeRotationSelf() : Vector3{
+        const p = 360;
+        this.x = ((this.x % p) + p) % p;
+        this.y = ((this.y % p) + p) % p;
+        this.z = ((this.z % p) + p) % p;
+        return this;
     }
 
     // ─── Comparison ───────────────────────────────────────────────────────────
