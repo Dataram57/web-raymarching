@@ -1,7 +1,6 @@
 precision mediump float;
 #define PI 3.1415926538
 uniform vec2 iResolution;
-uniform vec2 iMouse;
 uniform float iTime;
 uniform vec3 iCamPos;
 uniform vec3 iCamRot;

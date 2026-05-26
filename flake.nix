@@ -1,34 +1,27 @@
 {
-  description = "Universal static file server";
+  description = "Node.js + Vite development environment";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        pkgs = import nixpkgs { inherit system; };
-      in
-      {
-        devShells.default = pkgs.mkShell {
-          packages = [
-            pkgs.python3
-          ];
+  outputs = { self, nixpkgs }:
+    let
+      system = "x86_64-linux";
+      pkgs = import nixpkgs { inherit system; };
+    in {
+      devShells.${system}.default = pkgs.mkShell {
+        packages = with pkgs; [
+          nodejs_22
+          pnpm
+        ];
 
-          shellHook = ''
-            echo "Serving current directory at http://localhost:8000"
-            python3 -m http.server 8000
-          '';
-        };
-
-        apps.default = {
-          type = "app";
-          program = toString (pkgs.writeShellScript "serve" ''
-            echo "Serving current directory at http://localhost:8000"
-            ${pkgs.python3}/bin/python3 -m http.server 8000
-          '');
-        };
-      });
+        shellHook = ''
+          echo "Node version:"
+          node --version
+          echo "pnpm version:"
+          pnpm --version
+        '';
+      };
+    };
 }
