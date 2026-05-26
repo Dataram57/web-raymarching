@@ -1,3 +1,5 @@
+import { KeyboardState } from "./input/KeyboardState";
+import { Vector3 } from "./math/Vector3";
 import fragSrc from "./shaders/renderer.fs.glsl?raw";
 import vertSrc from "./shaders/renderer.vs.glsl?raw";
 
@@ -7,7 +9,6 @@ import vertSrc from "./shaders/renderer.vs.glsl?raw";
 const DEG_TO_RAD = Math.PI / 180;
 
 type Vec2 = [number, number];
-type Vec3 = [number, number, number];
 
 interface BufferObjects {
   pos: WebGLBuffer;
@@ -20,73 +21,6 @@ interface DrawProgram extends WebGLProgram {
   iCamRot: WebGLUniformLocation;
   iTime: WebGLUniformLocation;
   iResolution: WebGLUniformLocation;
-}
-
-// #endregion
-
-// ================================================================
-// #region Vec3 Math
-
-/** Returns a normalized forward vector from pitch and yaw (in radians). */
-const getFPSForward = (pitch: number, yaw: number): Vec3 => [
-  Math.cos(pitch) * Math.cos(yaw),
-  Math.sin(pitch),
-  Math.cos(pitch) * Math.sin(yaw),
-];
-
-const cloneVec3 = (v: Vec3): Vec3 => [v[0], v[1], v[2]];
-
-const scaleVec3 = (v: Vec3, scalar: number): Vec3 => {
-  v[0] *= scalar;
-  v[1] *= scalar;
-  v[2] *= scalar;
-  return v;
-};
-
-const addVec3 = (a: Vec3, b: Vec3): Vec3 => {
-  a[0] += b[0];
-  a[1] += b[1];
-  a[2] += b[2];
-  return a;
-};
-
-const subtractVec3 = (a: Vec3, b: Vec3): Vec3 => {
-  a[0] -= b[0];
-  a[1] -= b[1];
-  a[2] -= b[2];
-  return a;
-};
-
-const isZeroVec3 = (v: Vec3): boolean =>
-  v[0] === 0 && v[1] === 0 && v[2] === 0;
-
-/** Wraps each component to the range [0, modulo). */
-const wrapVec3 = (v: Vec3, modulo: number): Vec3 => {
-  v[0] = ((v[0] % modulo) + modulo) % modulo;
-  v[1] = ((v[1] % modulo) + modulo) % modulo;
-  v[2] = ((v[2] % modulo) + modulo) % modulo;
-  return v;
-};
-
-/** Keeps rotation values in [0, 360). */
-const normalizeRotation = (v: Vec3): Vec3 => wrapVec3(v, 360);
-
-// #endregion
-
-// ================================================================
-// #region Keyboard
-
-class KeyboardState {
-    private pressed = new Set<string>();
-
-    constructor() {
-        window.addEventListener("keydown", (e) => this.pressed.add(e.code));
-        window.addEventListener("keyup", (e) => this.pressed.delete(e.code));
-    }
-
-    isPressed(code: string): boolean {
-        return this.pressed.has(code);
-    }
 }
 
 // #endregion
@@ -107,44 +41,45 @@ const setupPointerLock = (): void => {
 // #region Camera State
 
 class Camera {
-  position: Vec3 = [1.5, 0.5, 1.5];
-  rotation: Vec3 = [0, 0, 0]; // degrees: [yaw, pitch, roll]
-  forward: Vec3 = [0, 0, 0];
-  left: Vec3 = [0, 0, 0];
+    position: Vector3 = new Vector3(1.5, 0.5, 1.5);
+    rotation: Vector3 = Vector3.zero(); // degrees: [yaw, pitch, roll]
+    forward: Vector3 = Vector3.zero();
+    left: Vector3 = Vector3.zero();
 
-  readonly speed = 0.1;
-  readonly sensitivity = 0.5;
+    readonly speed = 0.1;
+    readonly sensitivity = 0.5;
 
-  update(keyboard: KeyboardState): void {
-    const rotRad = cloneVec3(this.rotation);
-    scaleVec3(rotRad, DEG_TO_RAD);
+    update(keyboard: KeyboardState): void {
+        const rotRad = this.rotation.clone();
+        rotRad.scaleSelf(DEG_TO_RAD);
 
-    this.forward = getFPSForward(rotRad[1], rotRad[0]);
-    this.left = [
-      Math.cos(rotRad[0] + Math.PI * 0.5),
-      0,
-      Math.sin(rotRad[0] + Math.PI * 0.5),
-    ];
+        this.forward = Vector3.getFPSForward(rotRad.y, rotRad.x);
+        this.left = new Vector3(
+            Math.cos(rotRad.x + Math.PI * 0.5),
+            0,
+            Math.sin(rotRad.x + Math.PI * 0.5),
+        );
 
-    const movement: Vec3 = [0, 0, 0];
+        const movement : Vector3 = new Vector3(0, 0, 0);
 
-    if (keyboard.isPressed("KeyW")) addVec3(movement, this.forward);
-    if (keyboard.isPressed("KeyS")) subtractVec3(movement, this.forward);
-    if (keyboard.isPressed("KeyA")) addVec3(movement, this.left);
-    if (keyboard.isPressed("KeyD")) subtractVec3(movement, this.left);
-    if (keyboard.isPressed("KeyE")) movement[1] += 1;
-    if (keyboard.isPressed("KeyQ")) movement[1] -= 1;
+        if (keyboard.isPressed("KeyW")) movement.addSelf(this.forward);
+        if (keyboard.isPressed("KeyS")) movement.subSelf(this.forward);
+        if (keyboard.isPressed("KeyA")) movement.addSelf(this.left);
+        if (keyboard.isPressed("KeyD")) movement.subSelf(this.left);
+        if (keyboard.isPressed("KeyE")) movement.y += 1;
+        if (keyboard.isPressed("KeyQ")) movement.y -= 1;
 
-    if (!isZeroVec3(movement)) {
-      addVec3(this.position, scaleVec3(movement, this.speed));
+        if(!movement.isZero()){
+            movement.scaleSelf(this.speed);
+            this.position.addSelf(movement);
+        }
     }
-  }
 
-  applyMouseDelta(dx: number, dy: number): void {
-    this.rotation[0] += dx * this.sensitivity;
-    this.rotation[1] += dy * this.sensitivity;
-    normalizeRotation(this.rotation);
-  }
+    applyMouseDelta(dx: number, dy: number): void {
+        this.rotation.x += dx * this.sensitivity;
+        this.rotation.y += dy * this.sensitivity;
+        this.rotation.normalizeSelf();
+    }
 }
 
 // #endregion
@@ -324,11 +259,11 @@ class Renderer {
       gl.viewport(0, 0, canvas.width, canvas.height);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-      const camRotRad = cloneVec3(camera.rotation);
-      scaleVec3(camRotRad, DEG_TO_RAD);
+      const camRotRad = camera.rotation.clone();
+      camRotRad.scaleSelf(DEG_TO_RAD);
 
-      gl.uniform3f(prog.iCamPos,     camera.position[0], camera.position[1], camera.position[2]);
-      gl.uniform3f(prog.iCamRot,     camRotRad[0],       camRotRad[1],       camRotRad[2]);
+      gl.uniform3f(prog.iCamPos,     camera.position.x, camera.position.y, camera.position.z);
+      gl.uniform3f(prog.iCamRot,     camRotRad.x,       camRotRad.y,       camRotRad.z);
       gl.uniform1f(prog.iTime,       deltaMS / 1000);
       gl.uniform2f(prog.iResolution, canvas.width,       canvas.height);
 
