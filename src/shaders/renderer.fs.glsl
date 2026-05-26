@@ -8,15 +8,8 @@ uniform vec3 iCamRot;
 const int kRaySteps = 100;
 const vec3 kAmbient = vec3(0.2, 0.2, 0.2);
 
-
 //================================================================
-//#region Math
-
-
-//#endregion
-
-//================================================================
-//#region SDF Operations
+//#region Object Operations
 
 // Union
 float opU(float d1, float d2) {
@@ -143,13 +136,21 @@ float repeat(float t, float min, float max) {
 //#region Raymarcher
 
 vec3 getColor(vec3 rayPos, vec3 rayDir) {
-    vec3 color;
+    //background pixel
     vec3 bg = vec3(0.5, 0.6, 1.);
     
-    color = bg;
+    //default color
+    vec3 color = bg;
+
+    //ray-march
     for (int i = 0; i < kRaySteps; ++i){
+        //get minimum distance to closest object
         float d = map(rayPos);
+
+        //add dir * distance safely to the raypos 
         rayPos += d * rayDir;
+
+        //check if hit something
         if (d < 0.001){
             color = lighting(rayPos, normalize(vec3(sin(iTime / 2.) + 0.1, 0.1, 0.2)));
             break;
@@ -158,6 +159,11 @@ vec3 getColor(vec3 rayPos, vec3 rayDir) {
     
     return color;
 }
+
+//#endregion
+
+//================================================================
+//#region Renderer
 
 vec3 FPSCord(float pitch, float yaw){
     return vec3(cos(pitch) * cos(yaw), sin(pitch), cos(pitch) * sin(yaw));
@@ -170,6 +176,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     // Make uv go [-0.5, 0.5] and scale uv.x according to aspect ratio
     uv -= .5;
     uv.x = aspect * uv.x;
+
     // Initialize camera stuff
     vec3 camPos = iCamPos;
     //rotate camera
