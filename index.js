@@ -10,6 +10,8 @@ const deg2rad = Math.PI / 180;
 
 var canvas, gl, vp_size, prog, bufObj = {}, mousepos = [0, 0];
 
+let progDraw;
+
 const initScene = async () => {
     canvas = document.getElementById( "ogl-canvas");
     gl = canvas.getContext( "experimental-webgl" );
@@ -37,7 +39,7 @@ const initScene = async () => {
     */
 
     //create program
-    const progDraw = gl.createProgram();
+    progDraw = gl.createProgram();
     
     //load shaders
     for (let i = 0; i < 2; ++i) {
