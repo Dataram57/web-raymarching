@@ -2,8 +2,8 @@ import { KeyboardState } from "./input/KeyboardState";
 import { DEG_TO_RAD } from "./math";
 import { Vector2 } from "./math/Vector2";
 import { Vector3 } from "./math/Vector3";
-import fragSrc from "./shaders/renderer.fs.glsl?raw";
-import vertSrc from "./shaders/renderer.vs.glsl?raw";
+import fragSrc from "./shaders/renderer.frag";
+import vertSrc from "./shaders/renderer.vert";
 
 // ================================================================
 // #region Constants & Types
